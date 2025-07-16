@@ -29,7 +29,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, nextTick } from 'vue'
 
 const canvas = ref(null)
 const score = ref(0)
@@ -94,7 +94,8 @@ const startGame = () => {
   }, 1500)
 }
 
-onMounted(() => {
+
+onMounted(async() => {
   if (process.client) {
   sfx.shoot = new Audio('/shoot.wav')
   sfx.hit = new Audio('/hit.wav')
@@ -105,7 +106,11 @@ onMounted(() => {
 }
 
   isMobile.value = /Mobi|Android/i.test(navigator.userAgent)
+  await nextTick()
+
   const c = canvas.value
+  if (!c) return
+
   const ctx = c.getContext('2d')
   c.width = window.innerWidth
   c.height = window.innerHeight
@@ -199,7 +204,7 @@ function movePlayer() {
 
   setInterval(spawnEnemy, 1500)
 
-  function gameLoop() {
+    function gameLoop() {
     ctx.clearRect(0, 0, c.width, c.height)
     movePlayer()
     drawPlayer()
@@ -207,7 +212,7 @@ function movePlayer() {
     drawEnemies()
     requestAnimationFrame(gameLoop)
   }
-
+  
   gameLoop()
 })
 </script>
