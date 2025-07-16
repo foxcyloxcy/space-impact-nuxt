@@ -2,8 +2,29 @@
 // File: ~/pages/index.vue
 <template>
   <div class="relative w-screen h-screen bg-black overflow-hidden">
-    <div class="absolute top-4 left-4 text-white text-xl z-10">Score: {{ score }}</div>
-    <canvas ref="canvas" class="w-full h-full"></canvas>
+    <div v-if="!gameStarted" class="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 z-50">
+      <h1 class="text-white text-4xl mb-4">Space Impact</h1>
+      <button @click="startGame" class="bg-green-500 px-6 py-2 rounded text-white">Start Game</button>
+    </div>
+
+    <div v-else>
+      <div class="absolute top-4 left-4 text-white text-xl z-10">Score: {{ score }} | Level: {{ level }} | Lives: {{ lives }}</div>
+      <div v-if="bosses.length" class="absolute top-16 left-4 w-64 bg-gray-700 border border-white">
+        <div class="bg-purple-600 h-4" :style="{ width: bossHealthPercent + '%' }"></div>
+      </div>
+      <div class="absolute top-28 left-4 text-white text-sm z-10">Time: {{ elapsedTime }}s | High Score: {{ highScore }}</div>
+
+      <!-- Mobile Controls -->
+      <div v-if="isMobile" class="absolute bottom-4 left-4 z-50 flex gap-4">
+        <button @touchstart.prevent="moveDir = 'left'" @touchend.prevent="moveDir = null" class="w-16 h-16 bg-white bg-opacity-20 rounded-full"></button>
+        <button @touchstart.prevent="moveDir = 'right'" @touchend.prevent="moveDir = null" class="w-16 h-16 bg-white bg-opacity-20 rounded-full"></button>
+        <button @touchstart.prevent="moveDir = 'up'" @touchend.prevent="moveDir = null" class="w-16 h-16 bg-white bg-opacity-20 rounded-full"></button>
+        <button @touchstart.prevent="moveDir = 'down'" @touchend.prevent="moveDir = null" class="w-16 h-16 bg-white bg-opacity-20 rounded-full"></button>
+        <button @touchstart.prevent="shootBullet" class="w-16 h-16 bg-yellow-400 rounded-full">Fire</button>
+      </div>
+
+      <canvas ref="canvas" class="w-full h-full"></canvas>
+    </div>
   </div>
 </template>
 
@@ -12,6 +33,33 @@ import { onMounted, ref } from 'vue'
 
 const canvas = ref(null)
 const score = ref(0)
+const level = ref(1)
+const kills = ref(0)
+const elapsedTime = ref(0)
+const bossHealth = ref(0)
+const bossHealthPercent = ref(100)
+const lives = ref(3)
+const highScore = ref(0)
+
+if (process.client && score.value > highScore.value) {
+  localStorage.setItem('highScore', score.value)
+}
+const gameStarted = ref(false)
+const isMobile = ref(false)
+const moveDir = ref(null)
+const enemies = []
+const bosses = []
+const keys = {}
+
+
+const sfx = {
+  shoot: null,
+  hit: null,
+  bossHit: null,
+  death: null,
+  music: null
+}
+
 
 const player = {
   x: 50,
@@ -19,13 +67,44 @@ const player = {
   width: 50,
   height: 50,
   speed: 5,
-  bullets: []
+  bullets: [],
+  powerUp: null,
+  powerTimer: 0
 }
 
-const enemies = []
-const keys = {}
+const startGame = () => {
+  gameStarted.value = true
+  sfx.music.play()
+  requestAnimationFrame(gameLoop)
+  setInterval(() => {
+    elapsedTime.value++
+    if (player.powerTimer > 0) {
+      player.powerTimer--
+      if (player.powerTimer === 0) player.powerUp = null
+    }
+  }, 1000)
+
+  setInterval(() => {
+    if (bosses.length === 0 && kills.value >= 10) {
+      enemies.length = 0
+      spawnBoss()
+    } else if (bosses.length === 0) {
+      spawnEnemy()
+    }
+  }, 1500)
+}
 
 onMounted(() => {
+  if (process.client) {
+  sfx.shoot = new Audio('/shoot.wav')
+  sfx.hit = new Audio('/hit.wav')
+  sfx.bossHit = new Audio('/boss-hit.wav')
+  sfx.death = new Audio('/death.wav')
+  sfx.music = new Audio('/background.mp3')
+  sfx.music.loop = true
+}
+
+  isMobile.value = /Mobi|Android/i.test(navigator.userAgent)
   const c = canvas.value
   const ctx = c.getContext('2d')
   c.width = window.innerWidth
@@ -86,12 +165,15 @@ onMounted(() => {
     })
   }
 
-  function movePlayer() {
-    if (keys['ArrowUp'] && player.y > 0) player.y -= player.speed
-    if (keys['ArrowDown'] && player.y + player.height < c.height) player.y += player.speed
-    if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed
-    if (keys['ArrowRight'] && player.x + player.width < c.width) player.x += player.speed
-  }
+function movePlayer() {
+  if (keys['ArrowUp'] || moveDir.value === 'up') player.y -= player.speed
+  if (keys['ArrowDown'] || moveDir.value === 'down') player.y += player.speed
+  if (keys['ArrowLeft'] || moveDir.value === 'left') player.x -= player.speed
+  if (keys['ArrowRight'] || moveDir.value === 'right') player.x += player.speed
+
+  player.x = Math.max(0, Math.min(player.x, canvas.value.width - player.width))
+  player.y = Math.max(0, Math.min(player.y, canvas.value.height - player.height))
+}
 
   function shootBullet() {
     const bullet = {
